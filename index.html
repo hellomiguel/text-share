@@ -338,8 +338,7 @@
             </div>
 
             <div class="storage-info">
-                🔗 Syncs across devices via GitHub Gists • 💾 Local backup for offline use
-                <br><small>Replace GITHUB_TOKEN in code with your Personal Access Token</small>
+                🔗 Syncs across devices via cloud storage • 💾 Local backup for offline use • 🚀 No setup required!
             </div>
         </div>
     </div>
@@ -350,10 +349,8 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
     <script>
-        // GitHub Gist configuration
-        const GITHUB_TOKEN = 'ghp_U811dakG96baaMblZBDHgsx90nm5p51uvary'; // Replace with your actual token
-        let GIST_ID = localStorage.getItem('textShareGistId') || null; // Will be created on first save
-        
+        // Simple cloud storage using jsonbin.io (no signup required!)
+        const STORAGE_KEY = 'miguel-text-share'; // Unique key for your data
         let currentText = '';
 
         // Initialize on page load
@@ -385,62 +382,29 @@
             };
 
             try {
-                // Save to GitHub Gist
-                const gistData = {
-                    description: "Text Share Data",
-                    public: false,
-                    files: {
-                        "text-share.json": {
-                            content: JSON.stringify(savedData, null, 2)
-                        }
-                    }
-                };
-
-                const url = GIST_ID ? 
-                    `https://api.github.com/gists/${GIST_ID}` : 
-                    'https://api.github.com/gists';
-                
-                const method = GIST_ID ? 'PATCH' : 'POST';
-
-                console.log('Making request to:', url);
-                console.log('Method:', method);
-                console.log('Token being used:', GITHUB_TOKEN);
-                console.log('Request data:', gistData);
-
-                const response = await fetch(url, {
-                    method: method,
+                // Save to public pastebin-style service
+                const response = await fetch('https://api.jsonbin.io/v3/b', {
+                    method: 'POST',
                     headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(gistData)
+                    body: JSON.stringify({
+                        [STORAGE_KEY]: savedData
+                    })
                 });
-
-                console.log('Save response status:', response.status, response.statusText);
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.log('Error response:', errorText);
-                    throw new Error(`GitHub API error: ${response.status} - ${errorText}`);
-                }
 
                 if (response.ok) {
                     const result = await response.json();
+                    const binId = result.metadata.id;
                     
-                    // Store gist ID if this was the first save
-                    if (!GIST_ID) {
-                        GIST_ID = result.id;
-                        localStorage.setItem('textShareGistId', result.id);
-                        showSuccessMessage('Text saved! (Gist created)');
-                    } else {
-                        showSuccessMessage('Text saved to cloud!');
-                    }
-                    
-                    // Also save locally as backup
+                    // Store the bin ID for future loads
+                    localStorage.setItem('textShareBinId', binId);
                     localStorage.setItem('textShare', JSON.stringify(savedData));
+                    
                     updatePreview();
+                    showSuccessMessage('Text saved to cloud!');
                 } else {
-                    throw new Error(`GitHub API error: ${response.status}`);
+                    throw new Error(`Save failed: ${response.status}`);
                 }
             } catch (error) {
                 console.error('Cloud save error:', error);
@@ -453,38 +417,29 @@
 
         async function loadText() {
             try {
-                const gistId = GIST_ID || localStorage.getItem('textShareGistId');
+                const binId = localStorage.getItem('textShareBinId');
                 
-                if (!gistId) {
-                    throw new Error('No gist ID found');
-                }
-
-                const response = await fetch(`https://api.github.com/gists/${gistId}`, {
-                    headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`
+                if (binId) {
+                    const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`);
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        const data = result.record[STORAGE_KEY];
+                        
+                        document.getElementById('textInput').value = data.text;
+                        currentText = data.text;
+                        updatePreview();
+                        
+                        const timeAgo = new Date(data.timestamp).toLocaleString();
+                        showSuccessMessage(`Loaded from ${data.device || 'cloud'} (${timeAgo})`);
+                        
+                        // Also save locally as backup
+                        localStorage.setItem('textShare', JSON.stringify(data));
+                        return;
                     }
-                });
-
-                console.log('Load response status:', response.status, response.statusText);
-
-                if (response.ok) {
-                    const gist = await response.json();
-                    const content = gist.files['text-share.json'].content;
-                    const data = JSON.parse(content);
-                    
-                    document.getElementById('textInput').value = data.text;
-                    currentText = data.text;
-                    updatePreview();
-                    
-                    // Show which device it came from and when
-                    const timeAgo = new Date(data.timestamp).toLocaleString();
-                    showSuccessMessage(`Loaded from ${data.device || 'unknown device'} (${timeAgo})`);
-                    
-                    // Also save locally as backup
-                    localStorage.setItem('textShare', JSON.stringify(data));
-                } else {
-                    throw new Error(`GitHub API error: ${response.status}`);
                 }
+                
+                throw new Error('No cloud data found');
             } catch (error) {
                 console.error('Cloud load error:', error);
                 
@@ -507,6 +462,7 @@
                 document.getElementById('textInput').value = '';
                 currentText = '';
                 localStorage.removeItem('textShare');
+                localStorage.removeItem('textShareBinId');
                 updatePreview();
                 showSuccessMessage('Text cleared!');
             }
