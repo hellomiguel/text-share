@@ -338,7 +338,8 @@
             </div>
 
             <div class="storage-info">
-                💡 Text is saved locally in your browser. Clear browser data to reset.
+                🔗 Syncs across devices via GitHub Gists • 💾 Local backup for offline use
+                <br><small>Replace GITHUB_TOKEN in code with your Personal Access Token</small>
             </div>
         </div>
     </div>
@@ -349,6 +350,10 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
     <script>
+        // GitHub Gist configuration
+        const GITHUB_TOKEN = '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'; // Replace with your actual token
+        let GIST_ID = localStorage.getItem('textShareGistId') || null; // Will be created on first save
+        
         let currentText = '';
 
         // Initialize on page load
@@ -369,10 +374,6 @@
             document.getElementById('plainOutput').textContent = input;
         }
 
-        // GitHub Gist configuration
-        const GITHUB_TOKEN = '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'; // You'll need to create this
-        const GIST_ID = 'YOUR_GIST_ID_HERE'; // Created automatically on first save
-        
         async function saveText() {
             const text = document.getElementById('textInput').value;
             currentText = text;
@@ -415,7 +416,8 @@
                     
                     // Store gist ID if this was the first save
                     if (!GIST_ID) {
-                        localStorage.setItem('gistId', result.id);
+                        GIST_ID = result.id;
+                        localStorage.setItem('textShareGistId', result.id);
                         showSuccessMessage('Text saved! (Gist created)');
                     } else {
                         showSuccessMessage('Text saved to cloud!');
@@ -438,7 +440,7 @@
 
         async function loadText() {
             try {
-                const gistId = GIST_ID || localStorage.getItem('gistId');
+                const gistId = GIST_ID || localStorage.getItem('textShareGistId');
                 
                 if (!gistId) {
                     throw new Error('No gist ID found');
@@ -458,7 +460,10 @@
                     document.getElementById('textInput').value = data.text;
                     currentText = data.text;
                     updatePreview();
-                    showSuccessMessage(`Loaded from ${data.device || 'cloud'}!`);
+                    
+                    // Show which device it came from and when
+                    const timeAgo = new Date(data.timestamp).toLocaleString();
+                    showSuccessMessage(`Loaded from ${data.device || 'unknown device'} (${timeAgo})`);
                     
                     // Also save locally as backup
                     localStorage.setItem('textShare', JSON.stringify(data));
